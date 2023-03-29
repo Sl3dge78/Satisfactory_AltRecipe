@@ -3,9 +3,6 @@ name = "satisfactory_alt_recipe"
 version = "0.1.0"
 edition = "2021"
 
-[build]
-target = "wasm32-unknown-unknown"
-
 [dependencies]
 futures = "0.3.27"
 macroquad = "0.3.25"

@@ -1,5 +1,4 @@
 use macroquad::{prelude::*, ui::{*, widgets::Group}};
-use futures::executor::block_on;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -79,5 +78,4 @@ fn draw_static_elems(res: &Resources) {
     draw_texture(res.warning_icon, 10.0, 10.0, WHITE);
     draw_text("Analysis Complete!", 50.0, 35.0, 30.0, WHITE);
     draw_text(analysis_str, center.x, 80.0, 30.0, WHITE);
-
 }
