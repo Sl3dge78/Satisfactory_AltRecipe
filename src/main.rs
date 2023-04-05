@@ -36,11 +36,13 @@ async fn main() {
     let selected = select_recipes(&res.recipes);
 
     loop {
-        clear_background(DARKGRAY);
+        clear_background(BLACK);
         draw_static_elems(&res);
         for recipe in &selected {
+            let height = screen_height();
+            let width = screen_width()/3.0;
             Group::new(hash!(), Vec2::new(screen_width()/3.0, screen_height())).ui(&mut root_ui(), |ui| {
-                if ui.button(None, recipe.name.clone()) {
+                if ui.button(Vec2 {x: width/2.0, y: height/2.0}, Texture2D::empty().width(width).height(height)) {
                     info!("Yahoo");
                 }
             });
