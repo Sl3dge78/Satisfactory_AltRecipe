@@ -27,6 +27,7 @@ struct Resources {
     item_textures: ItemTextureMap,
     globe: Texture2D,
     mam: Texture2D,
+    checkmark: Texture2D,
 }
 
 type ItemTextureMap = HashMap<&'static str, Option<Texture2D>>;
@@ -40,6 +41,7 @@ impl Resources {
             item_textures: init_images(),
             globe: Texture2D::from_file_with_format(include_bytes!("../out/res/globe.png"), None),
             mam: Texture2D::from_file_with_format(include_bytes!("../out/res/mam.png"), None),
+            checkmark: Texture2D::from_file_with_format(include_bytes!("../out/res/ficsit_check.png"), None),
         }
     }
 }
@@ -64,11 +66,13 @@ impl State {
     }
 }
 
-fn confirm_button(rect: Rect, text: &str, text_params: TextParams) -> bool {
+fn confirm_button(rect: Rect, text: &str, text_params: TextParams, checkmark: Texture2D) -> bool {
     let mouse_in = rect.contains(input::mouse_position().into());
     let color = if mouse_in { LIGHT_GRAY } else { GRAY };
     draw_rectangle(rect.x, rect.y, rect.w, rect.h, color);
-    draw_centered_text(text, rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, text_params);
+    let (x, y, _, _) = draw_centered_text(text, rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, text_params);
+    let size: f32 = text_params.font_size as f32;
+    draw_texture_ex(checkmark, x - (size + 5.0), y, text_params.color, DrawTextureParams {dest_size: Some(Vec2::new(size, size)), ..Default::default()});
     if input::is_mouse_button_released(MouseButton::Left) {
         if mouse_in {
             return true;
@@ -194,7 +198,7 @@ async fn main() {
         let w = 200.0;
         let x = screen_width() / 2.0 - w / 2.0;
         let text_color = if state.recipe_selected == None { LIGHT_GRAY } else { WHITE };
-        if confirm_button(Rect {x, y: screen_height() - BORDER_SIZE, w, h: 50.0}, "Confirm",  TextParams { font: res.font, font_size: 20, color:text_color, ..Default::default()}) {
+        if confirm_button(Rect {x, y: screen_height() - BORDER_SIZE, w, h: 50.0}, "Confirm",  TextParams { font: res.font, font_size: 20, color:text_color, ..Default::default()}, res.checkmark) && state.recipe_selected != None {
             selected = select_recipes(&res.recipes, &mut res.item_textures).await;
             state.recipe_selected = None;
         }
@@ -245,9 +249,12 @@ async fn select_recipes<'a>(recipes: &'a Vec<Recipe>, texs: &mut ItemTextureMap)
     result
 }
 
-fn draw_centered_text(text: &str, x: f32, y: f32, text_params: TextParams) {
+fn draw_centered_text(text: &str, x: f32, y: f32, text_params: TextParams) -> (f32, f32, f32, f32) {
     let measure = measure_text(text, Some(text_params.font), text_params.font_size, 1.0);
-    draw_text_ex(text, x - measure.width / 2.0, y + (measure.height / 2.0) - (measure.height - measure.offset_y), text_params);
+    let x = x - measure.width / 2.0;
+    let y = y + (measure.height / 2.0) - (measure.height - measure.offset_y);
+    draw_text_ex(text, x, y, text_params);
+    return (x, y - measure.height, measure.width, measure.height);
 }
 
 #[allow(dead_code)]
@@ -269,8 +276,6 @@ fn draw_aligned_text(text: &str, x: f32, y: f32, text_params: TextParams, align:
 fn draw_static_elems(res: &Resources) {
     draw_rectangle(0.0, 0.0, screen_width(), BORDER_SIZE, DARK_GRAY);
     draw_rectangle(0.0, screen_height() - BORDER_SIZE, screen_width(), BORDER_SIZE, DARK_GRAY);
-
-
 
     draw_texture(res.warning_icon, 10.0, BORDER_SIZE / 2.0 - res.warning_icon.height() / 2.0, WHITE);
     draw_aligned_text("Analysis Complete!", 50.0, BORDER_SIZE / 2.0, TextParams { font: res.font, color:WHITE, ..Default::default()}, TextAlignement::Left);
