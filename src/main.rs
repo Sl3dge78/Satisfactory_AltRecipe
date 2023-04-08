@@ -18,6 +18,7 @@ const LIGHT_GRAY: Color = color_u8!(0x90, 0x90, 0x90, 0xFF);
 const BLACK: Color = color_u8!(0x0d,0x0d,0x0d,0xff); 
 const WHITE: Color = color_u8!(0xff,0xff,0xff,0xff); 
 const ORANGE: Color = color_u8!(0xe4,0x93,0x43,0xff); 
+
 const BORDER_SIZE: f32 = 75.0;
 
 struct Resources {
@@ -46,164 +47,15 @@ impl Resources {
     }
 }
 
+// --------
+// Loading
+
 fn init_images() -> ItemTextureMap {
     let mut result: ItemTextureMap = HashMap::new();
     for i in items::IMAGE_MAP.iter() {
         result.insert(i.0, None);
     }
     result
-}
-
-struct State {
-    recipe_selected: Option<u8>,
-}
-
-impl State {
-    fn new() -> Self {
-        Self {
-            recipe_selected: None,
-        }
-    }
-}
-
-fn confirm_button(rect: Rect, text: &str, text_params: TextParams, checkmark: Texture2D) -> bool {
-    let mouse_in = rect.contains(input::mouse_position().into());
-    let color = if mouse_in { LIGHT_GRAY } else { GRAY };
-    draw_rectangle(rect.x, rect.y, rect.w, rect.h, color);
-    let (x, y, _, _) = draw_centered_text(text, rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, text_params);
-    let size: f32 = text_params.font_size as f32;
-    draw_texture_ex(checkmark, x - (size + 5.0), y, text_params.color, DrawTextureParams {dest_size: Some(Vec2::new(size, size)), ..Default::default()});
-    if input::is_mouse_button_released(MouseButton::Left) {
-        if mouse_in {
-            return true;
-        }
-    }
-    false 
-}
-
-fn draw_centered_texture(texture: Texture2D, x: f32, y: f32, size: f32, color: Color) {
-    let x = x - size / 2.0;
-    let y = y - size / 2.0;
-    draw_texture_ex(texture, x, y, color, DrawTextureParams { dest_size: Some(Vec2::new(size, size)), ..Default::default()});
-
-}
-
-fn draw_rounded_rectangle(x: f32, y: f32, w: f32, h: f32, border: f32, color: Color) {
-    // Draw 5 rectangles and 4 cirles for the corner
-    draw_rectangle(x+border, y, w - border * 2.0, border, color); // Top
-    draw_rectangle(x+border, y + h - border, w - border * 2.0, border, color); // Bottom
-
-    draw_rectangle(x, y+border, border, h - border * 2.0, color); // Left
-    draw_rectangle(x + w - border, y+border, border, h - border * 2.0, color); // Right
-
-    draw_rectangle(x + border, y + border, w - border * 2.0, h - border * 2.0, color); // Center
-
-    draw_circle(x + border, y + border, border, color); // Upper Right
-    draw_circle(x + w - border, y + border, border, color); // Upper Left
-
-    draw_circle(x + border, y + h - border, border, color); // Lower Right
-    draw_circle(x + w - border, y + h - border, border, color); // Lower Left
-
-}
-
-fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, res: &Resources) -> bool {
-    // Calc extent 
-    let y = BORDER_SIZE + 50.0;
-    let h = screen_height() - (BORDER_SIZE + 50.0) * 2.0; 
-    let w = screen_width()/3.0;
-    let rect = Rect::new(offset_x, y, w, h);
-
-    let mouse_in = rect.contains(input::mouse_position().into());
-    let color = if selected { ORANGE } else {if mouse_in { GRAY } else { Color::from_rgba(0x00, 0x00, 0x00, 0x00) }};
-
-    // Big bckg rectangle
-    draw_rectangle(rect.x, rect.y, rect.w, rect.h, color);
-
-    // Prepare layout
-    let image_sz = w / 2.0;
-    let ingredient_size = w / 10.0;
-    let mut layout_x = offset_x + ingredient_size;
-    let mut layout_y = y + h / 2.0;
-
-    // Image
-    draw_centered_texture(res.globe, offset_x + w / 2.0, y + h / 2.0, image_sz, Color::from_rgba(0xff, 0xff, 0xff, 0x10));
-    if let Some(tex) = res.item_textures.get(&recipe.product as &str).unwrap() {
-        draw_centered_texture(*tex, offset_x + w / 2.0, y + h / 2.0, image_sz * 0.75, WHITE);
-    }
-    layout_y += image_sz / 2.0 + 20.0;
-
-    // Recipe name
-    draw_aligned_text(&format!("Alternate Blueprint: {}", &recipe.name), layout_x, layout_y, TextParams { font_size: 15, font: res.font, ..Default::default()}, TextAlignement::Left);
-    layout_y += 15.0;
-
-    // Ingredients 
-    {
-        let mut layout_x = layout_x;
-        // In
-        for input in &recipe.input {
-            if let Some(tex) = res.item_textures.get(&input.name as &str).unwrap() {
-                draw_rounded_rectangle(layout_x, layout_y, ingredient_size, ingredient_size, 5.0, LIGHT_GRAY);
-                draw_texture_ex(*tex, layout_x, layout_y, WHITE, DrawTextureParams { dest_size: Some(Vec2::new(ingredient_size, ingredient_size)), ..Default::default()});
-                layout_x += ingredient_size + 5.0;
-            }
-        }
-
-        // Arrow
-        let pad = ingredient_size / 4.0;
-        draw_triangle(Vec2::new(layout_x, layout_y + pad), Vec2::new(layout_x, layout_y + ingredient_size - pad), Vec2::new(layout_x + pad * 1.414, layout_y + ingredient_size / 2.0), LIGHT_GRAY);
-        layout_x += pad * 1.414 + 5.0;
-
-        // Out
-        if let Some(tex) = res.item_textures.get(&recipe.product as &str).unwrap() {
-            draw_rounded_rectangle(layout_x, layout_y, ingredient_size, ingredient_size, 5.0, LIGHT_GRAY);
-            draw_texture_ex(*tex, layout_x, layout_y, WHITE, DrawTextureParams { dest_size: Some(Vec2::new(ingredient_size, ingredient_size)), ..Default::default()});
-        }
-    }
-    layout_y += ingredient_size + 20.0;
-
-    (layout_x, _) = draw_aligned_text(&format!("Production Rate: "), layout_x, layout_y, TextParams { font_size: 15, font: res.font, ..Default::default()}, TextAlignement::Left);
-    draw_aligned_text(&format!("{} per minute", recipe.rate), layout_x, layout_y, TextParams { font_size: 15, font: res.font, color: ORANGE, ..Default::default()}, TextAlignement::Left);
-
-    if input::is_mouse_button_released(MouseButton::Left) {
-        if mouse_in {
-            return true;
-        }
-    }
-    false 
-}
-
-#[macroquad::main("Satisfactory Alt Recipe")]
-async fn main() {
-
-    // do_the_scrape();
-    rand::srand(miniquad::date::now() as u64); 
-    
-    let mut res = Resources::new().await;
-    let mut state = State::new();
-
-    let mut selected = select_recipes(&res.recipes, &mut res.item_textures).await;
-
-    loop {
-        clear_background(BLACK);
-        draw_texture_ex(res.mam, 0.0, 0.0, WHITE, DrawTextureParams {dest_size: Some(Vec2::new(screen_width(), screen_height())), ..Default::default()});
-        draw_rectangle(0.0, 0.0, screen_width(), screen_height(), Color::from_rgba(0x0d, 0x0d, 0x0d, 0xf0));
-
-        for (i, recipe) in selected.iter().enumerate() {
-            if recipe_button(recipe, i as f32 * screen_width() / 3.0, if let Some(r) = state.recipe_selected { r == i as u8 } else { false }, &res) {
-                state.recipe_selected = Some(i as u8);
-            }
-        }
-        draw_static_elems(&res);
-
-        let w = 200.0;
-        let x = screen_width() / 2.0 - w / 2.0;
-        let text_color = if state.recipe_selected == None { LIGHT_GRAY } else { WHITE };
-        if confirm_button(Rect {x, y: screen_height() - BORDER_SIZE, w, h: 50.0}, "Confirm",  TextParams { font: res.font, font_size: 20, color:text_color, ..Default::default()}, res.checkmark) && state.recipe_selected != None {
-            selected = select_recipes(&res.recipes, &mut res.item_textures).await;
-            state.recipe_selected = None;
-        }
-        next_frame().await
-    }
 }
 
 async fn load_image_texture(name: &str, texs: &mut ItemTextureMap) {
@@ -228,6 +80,206 @@ async fn recipe_load_textures(r: &Recipe, texs: &mut ItemTextureMap) {
     }
 }
 
+// --------
+// Ui helpers
+
+fn draw_centered_text(text: &str, x: f32, y: f32, text_params: TextParams) -> (f32, f32, f32, f32) {
+    let measure = measure_text(text, Some(text_params.font), text_params.font_size, 1.0);
+    let x = x - measure.width / 2.0;
+    let y = y + (measure.height / 2.0) - (measure.height - measure.offset_y);
+    draw_text_ex(text, x, y, text_params);
+    return (x, y - measure.height, measure.width, measure.height);
+}
+
+fn draw_aligned_text(text: &str, x: f32, y: f32, text_params: TextParams) -> (f32, f32) {
+    let measure = measure_text(text, Some(text_params.font), text_params.font_size, 1.0);
+    let y_ = y + text_params.font_size as f32 / 2.0;
+    draw_text_ex(text, x, y_, text_params);
+    (x + measure.width, y + measure.height)
+}
+
+fn draw_centered_texture(texture: Texture2D, x: f32, y: f32, size: f32, color: Color) {
+    let x = x - size / 2.0;
+    let y = y - size / 2.0;
+    draw_texture_ex(texture, x, y, color, DrawTextureParams { dest_size: Some(Vec2::new(size, size)), ..Default::default()});
+}
+
+fn draw_rounded_rectangle(x: f32, y: f32, w: f32, h: f32, border: f32, color: Color) {
+    // Draw 5 rectangles and 4 cirles for the corner
+    draw_rectangle(x+border, y, w - border * 2.0, border, color); // Top
+    draw_rectangle(x+border, y + h - border, w - border * 2.0, border, color); // Bottom
+
+    draw_rectangle(x, y+border, border, h - border * 2.0, color); // Left
+    draw_rectangle(x + w - border, y+border, border, h - border * 2.0, color); // Right
+
+    draw_rectangle(x + border, y + border, w - border * 2.0, h - border * 2.0, color); // Center
+
+    draw_circle(x + border, y + border, border, color); // Upper Right
+    draw_circle(x + w - border, y + border, border, color); // Upper Left
+
+    draw_circle(x + border, y + h - border, border, color); // Lower Right
+    draw_circle(x + w - border, y + h - border, border, color); // Lower Left
+}
+
+enum Alignement {
+    Left,
+    Center,
+}
+
+fn draw_icon_text(text: &str, icon: Texture2D, x: f32, y: f32, alignement: Alignement, text_params: TextParams) {
+    let icon_size: f32 = text_params.font_size as f32;
+    let pad = 5.0;
+    let mut size = measure_text(text, Some(text_params.font), text_params.font_size, 1.0);
+    size.width += icon_size + pad; // padding
+
+    let mut layout_x = match alignement {
+        Alignement::Center => screen_width() / 2.0 - size.width / 2.0,
+        Alignement::Left => x,
+    };
+
+    draw_texture_ex(icon, layout_x, y - size.height / 2.0, text_params.color, DrawTextureParams {dest_size: Some(Vec2::new(icon_size, icon_size)), ..Default::default()});
+    layout_x += icon_size + pad;
+    draw_aligned_text(text, layout_x, y, text_params);
+
+}
+
+// --------
+// Ui elements
+
+fn draw_ingredient(name: &str, items: &ItemTextureMap, x: &mut f32, y: f32, size: f32) {
+    if let Some(tex) = items.get(name).unwrap() {
+        draw_rounded_rectangle(*x, y, size, size, 5.0, LIGHT_GRAY);
+        draw_centered_texture(*tex, *x + size / 2.0, y + size / 2.0, size * 0.90, WHITE);
+        *x += size + 5.0;
+    }
+
+}
+
+fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, res: &Resources) -> bool {
+    // Calc extent 
+    let rect = Rect::new(offset_x, BORDER_SIZE + 50.0, screen_width() / 3.0, screen_height() - (BORDER_SIZE + 50.0) * 2.0);
+
+    let mouse_in = rect.contains(input::mouse_position().into());
+    let color = if selected { ORANGE } else {if mouse_in { GRAY } else { Color::from_rgba(0x00, 0x00, 0x00, 0x00) }};
+
+    // Big bckg rectangle
+    draw_rectangle(rect.x, rect.y, rect.w, rect.h, color);
+
+    // Prepare layout
+    let mut layout_y = rect.y + rect.h / 2.0;
+
+    // Image
+    {
+        let image_sz = rect.w / 2.0;
+        let x = offset_x + rect.w / 2.0;
+        let y = rect.y + rect.h / 2.0;
+        draw_centered_texture(res.globe, x, y, image_sz, Color::from_rgba(0xff, 0xff, 0xff, 0x10));
+        if let Some(tex) = res.item_textures.get(&recipe.product as &str).unwrap() {
+            draw_centered_texture(*tex, x, y, image_sz * 0.75, WHITE);
+        }
+        layout_y += image_sz / 2.0 + 20.0;
+    }
+
+    let ingredient_size = rect.w / 10.0;
+    let mut layout_x = rect.x + ingredient_size;
+
+    // Recipe name
+    draw_aligned_text(&format!("Alternate Blueprint: {}", &recipe.name), layout_x, layout_y, TextParams { font_size: 15, font: res.font, ..Default::default()});
+    layout_y += 15.0;
+
+    // Ingredients 
+    {
+        let mut layout_x = layout_x;
+        // In
+        for input in &recipe.input {
+            draw_ingredient(&input.name, &res.item_textures, &mut layout_x, layout_y, ingredient_size);
+        }
+
+        // Arrow
+        let pad = ingredient_size / 4.0;
+        draw_triangle(Vec2::new(layout_x, layout_y + pad), Vec2::new(layout_x, layout_y + ingredient_size - pad), Vec2::new(layout_x + pad * 1.414, layout_y + ingredient_size / 2.0), LIGHT_GRAY);
+        layout_x += pad * 1.414 + 5.0;
+
+        // Out
+        draw_ingredient(&recipe.product, &res.item_textures, &mut layout_x, layout_y, ingredient_size);
+        layout_y += ingredient_size + 20.0;
+    }
+
+    (layout_x, _) = draw_aligned_text(&format!("Production Rate: "), layout_x, layout_y, TextParams { font_size: 15, font: res.font, ..Default::default()});
+    draw_aligned_text(&format!("{} per minute", recipe.rate), layout_x, layout_y, TextParams { font_size: 15, font: res.font, color: ORANGE, ..Default::default()});
+
+    if input::is_mouse_button_released(MouseButton::Left) {
+        if mouse_in {
+            return true;
+        }
+    }
+    false 
+}
+
+fn confirm_button(text_params: TextParams, checkmark: Texture2D) -> bool {
+    let w = 200.0;
+    let x = screen_width() / 2.0 - w / 2.0;
+    let rect = Rect {x, y: screen_height() - BORDER_SIZE, w, h: 50.0};
+
+    let mouse_in = rect.contains(input::mouse_position().into());
+    let color = if mouse_in { LIGHT_GRAY } else { GRAY };
+    draw_rectangle(rect.x, rect.y, rect.w, rect.h, color);
+
+    draw_icon_text("Confirm", checkmark, rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, Alignement::Center, text_params);
+
+    // Size elems
+    if input::is_mouse_button_released(MouseButton::Left) {
+        if mouse_in {
+            return true;
+        }
+    }
+    false 
+}
+
+#[macroquad::main("Satisfactory Alt Recipe")]
+async fn main() {
+
+    // do_the_scrape();
+    rand::srand(miniquad::date::now() as u64); 
+    clear_background(BLACK);
+    draw_centered_text("Loading...", screen_width() / 2.0, screen_height() / 2.0, Default::default());
+
+    let mut res = Resources::new().await;
+    let mut recipe_selected: Option<u8> = None;
+
+    let mut selected = select_recipes(&res.recipes, &mut res.item_textures).await;
+
+    loop {
+        clear_background(BLACK);
+        // Background image + blur
+        draw_texture_ex(res.mam, 0.0, 0.0, WHITE, DrawTextureParams {dest_size: Some(Vec2::new(screen_width(), screen_height())), ..Default::default()});
+        draw_rectangle(0.0, 0.0, screen_width(), screen_height(), Color::from_rgba(0x0d, 0x0d, 0x0d, 0xf0));
+        
+        // Top/Bottom Borders
+        draw_rectangle(0.0, 0.0, screen_width(), BORDER_SIZE, DARK_GRAY);
+        draw_rectangle(0.0, screen_height() - BORDER_SIZE, screen_width(), BORDER_SIZE, DARK_GRAY);
+
+        // Top text
+        draw_icon_text("Analysis Complete!", res.warning_icon, 10.0, BORDER_SIZE / 2.0, Alignement::Left, TextParams {font:res.font, ..Default::default()});
+
+        for (i, recipe) in selected.iter().enumerate() {
+            if recipe_button(recipe, i as f32 * screen_width() / 3.0, if let Some(r) = recipe_selected { r == i as u8 } else { false }, &res) {
+                recipe_selected = Some(i as u8);
+            }
+        }
+
+        draw_centered_text("The analysis of Hard Drive is completed! Select your desired reward.", screen_width() / 2.0, BORDER_SIZE + 25.0, TextParams { font: res.font, color:WHITE, ..Default::default()});
+
+        let text_color = if recipe_selected == None { LIGHT_GRAY } else { WHITE };
+        if confirm_button(TextParams { font: res.font, font_size: 20, color:text_color, ..Default::default()}, res.checkmark) && recipe_selected != None {
+            selected = select_recipes(&res.recipes, &mut res.item_textures).await;
+            recipe_selected = None;
+        }
+        next_frame().await;
+    }
+}
+
+
 async fn select_recipes<'a>(recipes: &'a Vec<Recipe>, texs: &mut ItemTextureMap) -> Vec<&'a Recipe> {
     let mut ids = Vec::new();
     loop {
@@ -249,35 +301,3 @@ async fn select_recipes<'a>(recipes: &'a Vec<Recipe>, texs: &mut ItemTextureMap)
     result
 }
 
-fn draw_centered_text(text: &str, x: f32, y: f32, text_params: TextParams) -> (f32, f32, f32, f32) {
-    let measure = measure_text(text, Some(text_params.font), text_params.font_size, 1.0);
-    let x = x - measure.width / 2.0;
-    let y = y + (measure.height / 2.0) - (measure.height - measure.offset_y);
-    draw_text_ex(text, x, y, text_params);
-    return (x, y - measure.height, measure.width, measure.height);
-}
-
-#[allow(dead_code)]
-enum TextAlignement {
-    Left,
-    Center,
-}
-
-fn draw_aligned_text(text: &str, x: f32, y: f32, text_params: TextParams, align: TextAlignement) -> (f32, f32) {
-    let measure = measure_text(text, Some(text_params.font), text_params.font_size, 1.0);
-    let x = match align {
-        TextAlignement::Left => x,
-        TextAlignement::Center => x - measure.width / 2.0,
-    };
-    draw_text_ex(text, x, y + (measure.height / 2.0) - (measure.height - measure.offset_y), text_params);
-    (x + measure.width, y + measure.height)
-}
-
-fn draw_static_elems(res: &Resources) {
-    draw_rectangle(0.0, 0.0, screen_width(), BORDER_SIZE, DARK_GRAY);
-    draw_rectangle(0.0, screen_height() - BORDER_SIZE, screen_width(), BORDER_SIZE, DARK_GRAY);
-
-    draw_texture(res.warning_icon, 10.0, BORDER_SIZE / 2.0 - res.warning_icon.height() / 2.0, WHITE);
-    draw_aligned_text("Analysis Complete!", 50.0, BORDER_SIZE / 2.0, TextParams { font: res.font, color:WHITE, ..Default::default()}, TextAlignement::Left);
-    draw_centered_text("The analysis of Hard Drive is completed! Select your desired reward.", screen_width() / 2.0, BORDER_SIZE + 25.0, TextParams { font: res.font, color:WHITE, ..Default::default()});
-}
