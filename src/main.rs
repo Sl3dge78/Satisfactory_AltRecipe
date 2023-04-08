@@ -36,13 +36,13 @@ type ItemTextureMap = HashMap<&'static str, Option<Texture2D>>;
 impl Resources {
     pub async fn new() -> Resources {
         Resources {
-            warning_icon: Texture2D::from_file_with_format(include_bytes!("../out/res/warning.png"), None),
-            recipes: serde_json::from_str(include_str!("../out/res/recipes.json")).unwrap(),
+            warning_icon: Texture2D::from_file_with_format(include_bytes!("../res/warning.png"), None),
+            recipes: serde_json::from_str(include_str!("../res/recipes.json")).unwrap(),
             font : load_ttf_font("res/DejaVuSans.ttf").await.unwrap(),
             item_textures: init_images(),
-            globe: Texture2D::from_file_with_format(include_bytes!("../out/res/globe.png"), None),
-            mam: Texture2D::from_file_with_format(include_bytes!("../out/res/mam.png"), None),
-            checkmark: Texture2D::from_file_with_format(include_bytes!("../out/res/ficsit_check.png"), None),
+            globe: Texture2D::from_file_with_format(include_bytes!("../res/globe.png"), None),
+            mam: Texture2D::from_file_with_format(include_bytes!("../res/mam.png"), None),
+            checkmark: Texture2D::from_file_with_format(include_bytes!("../res/ficsit_check.png"), None),
         }
     }
 }
