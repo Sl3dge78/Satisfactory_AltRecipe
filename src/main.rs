@@ -3,7 +3,7 @@ extern crate lazy_static;
 
 use std::collections::HashMap;
 
-use macroquad::{prelude::*, input};
+use macroquad::{prelude::{*, coroutines::*}, input};
 
 // mod scrape;
 // #[allow(unused_imports)]
@@ -56,28 +56,6 @@ fn init_images() -> ItemTextureMap {
         result.insert(i.0, None);
     }
     result
-}
-
-async fn load_image_texture(name: &str, texs: &mut ItemTextureMap) {
-    if let Some(v) = texs.get_mut(name) {
-        if *v == None {
-            let path = format!("res/images/{}", IMAGE_MAP.get(name).unwrap());
-            *v = match load_texture(&path).await {
-                Ok(tex) => Some(tex),
-                Err(e) => {
-                    error!("Unable to load {}: {}", path, e);
-                    None
-                },
-            };
-        }
-    }
-}
-
-async fn recipe_load_textures(r: &Recipe, texs: &mut ItemTextureMap) {
-    load_image_texture(&r.product, texs).await;
-    for ing in &r.input {
-        load_image_texture(&ing.name, texs).await;
-    }
 }
 
 // --------
@@ -146,18 +124,19 @@ fn draw_icon_text(text: &str, icon: Texture2D, x: f32, y: f32, alignement: Align
 // --------
 // Ui elements
 
-fn draw_ingredient(name: &str, items: &ItemTextureMap, x: &mut f32, y: f32, size: f32) {
-    if let Some(tex) = items.get(name).unwrap() {
+fn draw_ingredient(item: &Item, x: &mut f32, y: f32, size: f32) {
+    if let Some(tex) = item.texture {
         draw_rounded_rectangle(*x, y, size, size, 5.0, LIGHT_GRAY);
-        draw_centered_texture(*tex, *x + size / 2.0, y + size / 2.0, size * 0.90, WHITE);
+        draw_centered_texture(tex, *x + size / 2.0, y + size / 2.0, size * 0.90, WHITE);
         *x += size + 5.0;
     }
 
 }
 
-fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, res: &Resources) -> bool {
+fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, font: Font, globe: Texture2D) -> bool {
     // Calc extent 
     let rect = Rect::new(offset_x, BORDER_SIZE + 50.0, screen_width() / 3.0, screen_height() - (BORDER_SIZE + 50.0) * 2.0);
+    let font_size = 15;
 
     let mouse_in = rect.contains(input::mouse_position().into());
     let color = if selected { ORANGE } else {if mouse_in { GRAY } else { Color::from_rgba(0x00, 0x00, 0x00, 0x00) }};
@@ -173,9 +152,9 @@ fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, res: &Resources
         let image_sz = rect.w / 2.0;
         let x = offset_x + rect.w / 2.0;
         let y = rect.y + rect.h / 2.0;
-        draw_centered_texture(res.globe, x, y, image_sz, Color::from_rgba(0xff, 0xff, 0xff, 0x10));
-        if let Some(tex) = res.item_textures.get(&recipe.product as &str).unwrap() {
-            draw_centered_texture(*tex, x, y, image_sz * 0.75, WHITE);
+        draw_centered_texture(globe, x, y, image_sz, Color::from_rgba(0xff, 0xff, 0xff, 0x10));
+        if let Some(tex) = recipe.product.texture {
+            draw_centered_texture(tex, x, y, image_sz * 0.75, WHITE);
         }
         layout_y += image_sz / 2.0 + 20.0;
     }
@@ -184,7 +163,7 @@ fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, res: &Resources
     let mut layout_x = rect.x + ingredient_size;
 
     // Recipe name
-    draw_aligned_text(&format!("Alternate Blueprint: {}", &recipe.name), layout_x, layout_y, TextParams { font_size: 15, font: res.font, ..Default::default()});
+    draw_aligned_text(&format!("Alternate Blueprint: {}", &recipe.name), layout_x, layout_y, TextParams { font_size, font, ..Default::default()});
     layout_y += 15.0;
 
     // Ingredients 
@@ -192,7 +171,7 @@ fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, res: &Resources
         let mut layout_x = layout_x;
         // In
         for input in &recipe.input {
-            draw_ingredient(&input.name, &res.item_textures, &mut layout_x, layout_y, ingredient_size);
+            draw_ingredient(&input.name, &mut layout_x, layout_y, ingredient_size);
         }
 
         // Arrow
@@ -201,12 +180,12 @@ fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, res: &Resources
         layout_x += pad * 1.414 + 5.0;
 
         // Out
-        draw_ingredient(&recipe.product, &res.item_textures, &mut layout_x, layout_y, ingredient_size);
+        draw_ingredient(&recipe.product, &mut layout_x, layout_y, ingredient_size);
         layout_y += ingredient_size + 20.0;
     }
 
-    (layout_x, _) = draw_aligned_text(&format!("Production Rate: "), layout_x, layout_y, TextParams { font_size: 15, font: res.font, ..Default::default()});
-    draw_aligned_text(&format!("{} per minute", recipe.rate), layout_x, layout_y, TextParams { font_size: 15, font: res.font, color: ORANGE, ..Default::default()});
+    (layout_x, _) = draw_aligned_text(&format!("Production Rate: "), layout_x, layout_y, TextParams { font_size, font, ..Default::default()});
+    draw_aligned_text(&format!("{} per minute", recipe.rate), layout_x, layout_y, TextParams { font_size, font, color: ORANGE, ..Default::default()});
 
     if input::is_mouse_button_released(MouseButton::Left) {
         if mouse_in {
@@ -241,13 +220,12 @@ async fn main() {
 
     // do_the_scrape();
     rand::srand(miniquad::date::now() as u64); 
-    clear_background(BLACK);
-    draw_centered_text("Loading...", screen_width() / 2.0, screen_height() / 2.0, Default::default());
 
     let mut res = Resources::new().await;
-    let mut recipe_selected: Option<u8> = None;
 
-    let mut selected = select_recipes(&res.recipes, &mut res.item_textures).await;
+    let mut selected_recipe: Option<u8> = None;
+    let mut displayed_recipes = select_recipes(&mut res.recipes, &mut res.item_textures).await;
+    let mut next = start_coroutine(async move { (select_recipes(&mut res.recipes, &mut res.item_textures).await, res.recipes, res.item_textures) });
 
     loop {
         clear_background(BLACK);
@@ -262,25 +240,27 @@ async fn main() {
         // Top text
         draw_icon_text("Analysis Complete!", res.warning_icon, 10.0, BORDER_SIZE / 2.0, Alignement::Left, TextParams {font:res.font, ..Default::default()});
 
-        for (i, recipe) in selected.iter().enumerate() {
-            if recipe_button(recipe, i as f32 * screen_width() / 3.0, if let Some(r) = recipe_selected { r == i as u8 } else { false }, &res) {
-                recipe_selected = Some(i as u8);
+        for (i, recipe) in displayed_recipes.iter().enumerate() {
+            let is_selected = if let Some(r) = selected_recipe { r == i as u8 } else { false };
+            if recipe_button(recipe, i as f32 * screen_width() / 3.0, is_selected, res.font, res.globe) {
+                selected_recipe = Some(i as u8);
             }
         }
 
         draw_centered_text("The analysis of Hard Drive is completed! Select your desired reward.", screen_width() / 2.0, BORDER_SIZE + 25.0, TextParams { font: res.font, color:WHITE, ..Default::default()});
 
-        let text_color = if recipe_selected == None { LIGHT_GRAY } else { WHITE };
-        if confirm_button(TextParams { font: res.font, font_size: 20, color:text_color, ..Default::default()}, res.checkmark) && recipe_selected != None {
-            selected = select_recipes(&res.recipes, &mut res.item_textures).await;
-            recipe_selected = None;
+        let text_color = if selected_recipe == None { LIGHT_GRAY } else { WHITE };
+        if confirm_button(TextParams { font: res.font, font_size: 20, color:text_color, ..Default::default()}, res.checkmark) && selected_recipe != None {
+            (displayed_recipes, res.recipes, res.item_textures) = next.retrieve().unwrap();
+            next = start_coroutine(async move { (select_recipes(&mut res.recipes, &mut res.item_textures).await, res.recipes, res.item_textures) });
+            selected_recipe = None;
         }
         next_frame().await;
     }
 }
 
 
-async fn select_recipes<'a>(recipes: &'a Vec<Recipe>, texs: &mut ItemTextureMap) -> Vec<&'a Recipe> {
+async fn select_recipes(recipes: &mut Vec<Recipe>, texs: &mut ItemTextureMap) -> Vec<Recipe> {
     let mut ids = Vec::new();
     loop {
         let nb = rand::rand() as usize % recipes.len();
@@ -292,12 +272,9 @@ async fn select_recipes<'a>(recipes: &'a Vec<Recipe>, texs: &mut ItemTextureMap)
             break;
         }
     }
-    let mut result = Vec::new();
-    for i in ids {
-        info!("{:?}", recipes[i]);
-        recipe_load_textures(&recipes[i], texs).await;
-        result.push(&recipes[i]);
+    for i in &ids {
+        recipes[*i].load(texs).await;
     }
-    result
+    ids.iter().map(|i| recipes[*i].clone()).collect()
 }
 

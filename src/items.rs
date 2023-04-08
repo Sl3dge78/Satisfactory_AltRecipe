@@ -1,18 +1,71 @@
+use macroquad::prelude::*; 
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize)]
+use crate::ItemTextureMap;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ingredients {
-    pub name: String,
+    pub name: Item,
     pub nb: f32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Recipe {
     pub name: String,
-    pub product: String,
+    pub product: Item,
     pub input: Vec<Ingredients>,
     pub rate: f32,
+}
+
+impl Recipe {
+    pub async fn load(&mut self, texs: &mut ItemTextureMap) {
+        self.product.load(texs).await;
+        for inp in &mut self.input {
+            inp.name.load(texs).await;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "String")]
+pub struct Item {
+    pub name: String,
+    #[serde(skip)]
+    pub texture: Option<Texture2D>,
+}
+
+impl From<String> for Item {
+    fn from(value: String) -> Self {
+        Self {
+            name: value,
+            texture: None
+        }
+    }
+}
+
+impl Item {
+    pub async fn load(&mut self, texs: &mut ItemTextureMap) {
+        self.texture = match texs.get_mut(&self.name as &str) {
+            None => None,
+            Some(v) => {
+                match *v {
+                    Some(_) => *v,
+                    None => {
+                        let path = format!("res/images/{}", IMAGE_MAP.get(&self.name as &str).unwrap());
+                        match load_texture(&path).await {
+                            Ok(tex) => Some(tex),
+                            Err(e) => {
+                                error!("Unable to load {}: {}", path, e);
+                                None
+                            },
+                        }
+                    }
+                }
+            }
+        };
+
+    }
 }
 
 lazy_static! {
