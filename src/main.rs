@@ -195,18 +195,20 @@ fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, font: Font, glo
     false 
 }
 
-fn confirm_button(text_params: TextParams, checkmark: Texture2D) -> bool {
+fn confirm_button(text_params: TextParams, checkmark: Texture2D, active: bool) -> bool {
     let w = 200.0;
     let x = screen_width() / 2.0 - w / 2.0;
     let rect = Rect {x, y: screen_height() - BORDER_SIZE, w, h: 50.0};
 
-    let mouse_in = rect.contains(input::mouse_position().into());
-    let color = if mouse_in { LIGHT_GRAY } else { GRAY };
+    let mouse_in = active && rect.contains(input::mouse_position().into());
+    let down = input::is_mouse_button_down(MouseButton::Left);
+    let color = if mouse_in { if down { ORANGE } else { LIGHT_GRAY } } else { GRAY };
     draw_rectangle(rect.x, rect.y, rect.w, rect.h, color);
 
+    let mut text_params = text_params;
+    text_params.color = if !active { LIGHT_GRAY } else { WHITE };
     draw_icon_text("Confirm", checkmark, rect.x + rect.w / 2.0, rect.y + rect.h / 2.0, Alignement::Center, text_params);
 
-    // Size elems
     if input::is_mouse_button_released(MouseButton::Left) {
         if mouse_in {
             return true;
@@ -226,7 +228,7 @@ async fn main() {
     let mut selected_recipe: Option<u8> = None;
     let mut displayed_recipes = select_recipes(&mut res.recipes, &mut res.item_textures).await;
     let mut next = start_coroutine(async move { (select_recipes(&mut res.recipes, &mut res.item_textures).await, res.recipes, res.item_textures) });
-    let mut wait = false;
+    let mut show_next_when_ready = false;
 
     loop {
         clear_background(BLACK);
@@ -250,16 +252,15 @@ async fn main() {
 
         draw_centered_text("The analysis of Hard Drive is completed! Select your desired reward.", screen_width() / 2.0, BORDER_SIZE + 25.0, TextParams { font: res.font, color:WHITE, ..Default::default()});
 
-        let text_color = if selected_recipe == None { LIGHT_GRAY } else { WHITE };
-        if wait || (confirm_button(TextParams { font: res.font, font_size: 20, color:text_color, ..Default::default()}, res.checkmark) && selected_recipe != None) {
-            if next.is_done() {
-                (displayed_recipes, res.recipes, res.item_textures) = next.retrieve().unwrap();
-                next = start_coroutine(async move { (select_recipes(&mut res.recipes, &mut res.item_textures).await, res.recipes, res.item_textures) });
-                selected_recipe = None;
-                wait = false;
-            } else {
-                wait = true;
-            }
+        if confirm_button(TextParams { font: res.font, font_size: 20, ..Default::default()}, res.checkmark, selected_recipe.is_some()) {
+            show_next_when_ready = true;
+        }
+
+        if show_next_when_ready && next.is_done() {
+            (displayed_recipes, res.recipes, res.item_textures) = next.retrieve().unwrap();
+            next = start_coroutine(async move { (select_recipes(&mut res.recipes, &mut res.item_textures).await, res.recipes, res.item_textures) });
+            selected_recipe = None;
+            show_next_when_ready = false;
         }
         next_frame().await;
     }
