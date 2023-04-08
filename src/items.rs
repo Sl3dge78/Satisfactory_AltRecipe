@@ -46,25 +46,29 @@ impl From<String> for Item {
 
 impl Item {
     pub async fn load(&mut self, texs: &mut ItemTextureMap) {
-        self.texture = match texs.get_mut(&self.name as &str) {
-            None => None,
-            Some(v) => {
-                match *v {
-                    Some(_) => *v,
-                    None => {
-                        let path = format!("res/images/{}", IMAGE_MAP.get(&self.name as &str).unwrap());
-                        match load_texture(&path).await {
-                            Ok(tex) => Some(tex),
-                            Err(e) => {
-                                error!("Unable to load {}: {}", path, e);
-                                None
-                            },
-                        }
-                    }
+        if let Some(_) = self.texture {
+            return;
+        }
+
+        self.texture = if let Some(v) = texs.get_mut(&self.name as &str) {
+            if let Some(t) = *v { 
+                Some(t)
+            } else {
+                let path = format!("res/images/{}", IMAGE_MAP.get(&self.name as &str).unwrap());
+                match load_texture(&path).await {
+                    Ok(tex) => {
+                        *v = Some(tex);
+                        Some(tex)
+                    },
+                    Err(e) => {
+                        error!("Unable to load {}: {}", path, e);
+                        None
+                    },
                 }
             }
-        };
-
+        } else { 
+            None
+        }
     }
 }
 

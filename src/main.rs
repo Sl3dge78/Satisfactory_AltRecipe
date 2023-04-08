@@ -226,6 +226,7 @@ async fn main() {
     let mut selected_recipe: Option<u8> = None;
     let mut displayed_recipes = select_recipes(&mut res.recipes, &mut res.item_textures).await;
     let mut next = start_coroutine(async move { (select_recipes(&mut res.recipes, &mut res.item_textures).await, res.recipes, res.item_textures) });
+    let mut wait = false;
 
     loop {
         clear_background(BLACK);
@@ -250,10 +251,15 @@ async fn main() {
         draw_centered_text("The analysis of Hard Drive is completed! Select your desired reward.", screen_width() / 2.0, BORDER_SIZE + 25.0, TextParams { font: res.font, color:WHITE, ..Default::default()});
 
         let text_color = if selected_recipe == None { LIGHT_GRAY } else { WHITE };
-        if confirm_button(TextParams { font: res.font, font_size: 20, color:text_color, ..Default::default()}, res.checkmark) && selected_recipe != None {
-            (displayed_recipes, res.recipes, res.item_textures) = next.retrieve().unwrap();
-            next = start_coroutine(async move { (select_recipes(&mut res.recipes, &mut res.item_textures).await, res.recipes, res.item_textures) });
-            selected_recipe = None;
+        if wait || (confirm_button(TextParams { font: res.font, font_size: 20, color:text_color, ..Default::default()}, res.checkmark) && selected_recipe != None) {
+            if next.is_done() {
+                (displayed_recipes, res.recipes, res.item_textures) = next.retrieve().unwrap();
+                next = start_coroutine(async move { (select_recipes(&mut res.recipes, &mut res.item_textures).await, res.recipes, res.item_textures) });
+                selected_recipe = None;
+                wait = false;
+            } else {
+                wait = true;
+            }
         }
         next_frame().await;
     }
