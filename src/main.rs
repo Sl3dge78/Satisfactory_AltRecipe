@@ -29,6 +29,8 @@ struct Resources {
     globe: Texture2D,
     mam: Texture2D,
     checkmark: Texture2D,
+    font_med: u16,
+    font_big: u16,
 }
 
 type ItemTextureMap = HashMap<&'static str, Option<Texture2D>>;
@@ -43,6 +45,8 @@ impl Resources {
             globe: Texture2D::from_file_with_format(include_bytes!("../res/globe.png"), None),
             mam: Texture2D::from_file_with_format(include_bytes!("../res/mam.png"), None),
             checkmark: Texture2D::from_file_with_format(include_bytes!("../res/ficsit_check.png"), None),
+            font_med : ((screen_height() / 720.0) * 15.0) as u16,
+            font_big : ((screen_height() / 720.0) * 20.0) as u16,
         }
     }
 }
@@ -133,10 +137,9 @@ fn draw_ingredient(item: &Item, x: &mut f32, y: f32, size: f32) {
 
 }
 
-fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, font: Font, globe: Texture2D) -> bool {
+fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, font_size: u16, font: Font, globe: Texture2D) -> bool {
     // Calc extent 
     let rect = Rect::new(offset_x, BORDER_SIZE + 50.0, screen_width() / 3.0, screen_height() - (BORDER_SIZE + 50.0) * 2.0);
-    let font_size = 15;
 
     let mouse_in = rect.contains(input::mouse_position().into());
     let color = if selected { ORANGE } else {if mouse_in { GRAY } else { Color::from_rgba(0x00, 0x00, 0x00, 0x00) }};
@@ -241,18 +244,18 @@ async fn main() {
         draw_rectangle(0.0, screen_height() - BORDER_SIZE, screen_width(), BORDER_SIZE, DARK_GRAY);
 
         // Top text
-        draw_icon_text("Analysis Complete!", res.warning_icon, 10.0, BORDER_SIZE / 2.0, Alignement::Left, TextParams {font:res.font, ..Default::default()});
+        draw_icon_text("Analysis Complete!", res.warning_icon, 10.0, BORDER_SIZE / 2.0, Alignement::Left, TextParams {font:res.font, font_size: res.font_big, ..Default::default()});
 
         for (i, recipe) in displayed_recipes.iter().enumerate() {
             let is_selected = if let Some(r) = selected_recipe { r == i as u8 } else { false };
-            if recipe_button(recipe, i as f32 * screen_width() / 3.0, is_selected, res.font, res.globe) {
+            if recipe_button(recipe, i as f32 * screen_width() / 3.0, is_selected, res.font_med, res.font, res.globe) {
                 selected_recipe = Some(i as u8);
             }
         }
 
-        draw_centered_text("The analysis of Hard Drive is completed! Select your desired reward.", screen_width() / 2.0, BORDER_SIZE + 25.0, TextParams { font: res.font, color:WHITE, ..Default::default()});
+        draw_centered_text("The analysis of Hard Drive is completed! Select your desired reward.", screen_width() / 2.0, BORDER_SIZE + 25.0, TextParams { font: res.font, font_size: res.font_big, color:WHITE, ..Default::default()});
 
-        if confirm_button(TextParams { font: res.font, font_size: 20, ..Default::default()}, res.checkmark, selected_recipe.is_some()) {
+        if confirm_button(TextParams { font: res.font, font_size: res.font_big, ..Default::default()}, res.checkmark, selected_recipe.is_some()) {
             show_next_when_ready = true;
         }
 
