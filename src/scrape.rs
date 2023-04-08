@@ -38,7 +38,9 @@ fn parse_line(row: ElementRef) -> Option<Recipe> {
             }
             })
         .collect();
+    let rate: f32 = cols[3].text().next().unwrap().parse::<f32>().unwrap();
 
+    /*
     for (i, image) in cols[1].select(&Selector::parse("img[src]").unwrap()).enumerate() {
         if let Some(link) = image.value().attr("data-src") {
             let png = link.find(".png").unwrap();
@@ -50,10 +52,12 @@ fn parse_line(row: ElementRef) -> Option<Recipe> {
             std::fs::write(format!("res/images/{}", file_name), response).unwrap();
         }
     }
+    */
 
     Some(Recipe {
         name,
         product,
         input,
+        rate,
     })
 }

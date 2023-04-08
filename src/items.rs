@@ -12,6 +12,7 @@ pub struct Recipe {
     pub name: String,
     pub product: String,
     pub input: Vec<Ingredients>,
+    pub rate: f32,
 }
 
 lazy_static! {
