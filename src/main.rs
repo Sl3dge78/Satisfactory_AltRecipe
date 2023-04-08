@@ -1,32 +1,33 @@
-use macroquad::{prelude::*, input};
-use serde::Deserialize;
+#[macro_use]
+extern crate lazy_static;
 
-const DARK_GRAY : Color = color_u8!(0x3F, 0x3F, 0x3F, 0xFF);
-const GRAY : Color = color_u8!(0x65, 0x65, 0x65, 0xFF);
-const LIGHT_GRAY : Color = color_u8!(0x90, 0x90, 0x90, 0xFF);
-const BLACK : Color = color_u8!(0x0d,0x0d,0x0d,0xff); 
+use std::collections::HashMap;
+
+use macroquad::{prelude::*, input};
+
+// mod scrape;
+// #[allow(unused_imports)]
+// use scrape::*;
+
+mod items;
+use items::*;
+
+const DARK_GRAY: Color = color_u8!(0x3F, 0x3F, 0x3F, 0xFF);
+const GRAY: Color = color_u8!(0x65, 0x65, 0x65, 0xFF);
+const LIGHT_GRAY: Color = color_u8!(0x90, 0x90, 0x90, 0xFF);
+const BLACK: Color = color_u8!(0x0d,0x0d,0x0d,0xff); 
 const WHITE: Color = color_u8!(0xff,0xff,0xff,0xff); 
 const ORANGE: Color = color_u8!(0xe4,0x93,0x43,0xff); 
-const BORDER_SIZE : f32 = 75.0;
-
-#[derive(Debug, Deserialize)]
-struct Ingredients {
-    name: String,
-    nb: f32,
-}
-
-#[derive(Debug, Deserialize)]
-struct Recipe {
-    name: String,
-    product: String,
-    input: Vec<Ingredients>,
-}
+const BORDER_SIZE: f32 = 75.0;
 
 struct Resources {
     warning_icon: Texture2D, 
     recipes: Vec<Recipe>,
     font: Font,
+    item_textures: ItemTextureMap,
 }
+
+type ItemTextureMap = HashMap<&'static str, Option<Texture2D>>;
 
 impl Resources {
     pub async fn new() -> Resources {
@@ -34,8 +35,17 @@ impl Resources {
             warning_icon: Texture2D::from_file_with_format(include_bytes!("../res/warning.png"), None),
             recipes: serde_json::from_str(include_str!("../res/recipes.json")).unwrap(),
             font : load_ttf_font("res/DejaVuSans.ttf").await.unwrap(),
+            item_textures: init_images()
         }
     }
+}
+
+fn init_images() -> ItemTextureMap {
+    let mut result: ItemTextureMap = HashMap::new();
+    for i in items::IMAGE_MAP.iter() {
+        result.insert(i.0, None);
+    }
+    result
 }
 
 struct State {
@@ -63,16 +73,27 @@ fn confirm_button(rect: Rect, text: &str, text_params: TextParams) -> bool {
     false 
 }
 
-fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, font: Font) -> bool {
+fn draw_centered_texture(texture: Texture2D, x: f32, y: f32, size: f32) {
+    let x = x - size / 2.0;
+    let y = y - size / 2.0;
+    draw_texture_ex(texture, x, y, WHITE, DrawTextureParams { dest_size: Some(Vec2::new(size, size)), ..Default::default()});
+
+}
+
+fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, font: Font, images: &ItemTextureMap) -> bool {
     let y = BORDER_SIZE + 50.0;
-    let h = screen_height();
+    let h = screen_height() - (BORDER_SIZE + 50.0) * 2.0; 
     let w = screen_width()/3.0;
     let rect = Rect::new(offset_x, y, w, h);
     let mouse_in = rect.contains(input::mouse_position().into());
     let color = if selected { ORANGE } else {if mouse_in { GRAY } else { BLACK }};
     draw_rectangle(rect.x, rect.y, rect.w, rect.h, color);
 
-    draw_centered_text(&recipe.name, offset_x + w / 2.0, y + h / 2.0, TextParams { font_size: 30, font, ..Default::default()} );
+    if let Some(tex) = images.get(&recipe.product as &str).unwrap() {
+        draw_centered_texture(*tex, offset_x + w / 2.0, y + h / 2.0, 200.0);
+    }
+
+    draw_centered_text(&format!("Alternate Blueprint: {}", &recipe.name), offset_x + w / 2.0, y + h / 2.0, TextParams { font_size: 15, font, ..Default::default()} );
 
     if input::is_mouse_button_released(MouseButton::Left) {
         if mouse_in {
@@ -84,16 +105,18 @@ fn recipe_button(recipe: &Recipe, offset_x: f32, selected: bool, font: Font) -> 
 
 #[macroquad::main("Satisfactory Alt Recipe")]
 async fn main() {
+
+    // do_the_scrape();
     
-    let res = Resources::new().await;
+    let mut res = Resources::new().await;
     let mut state = State::new();
 
-    let mut selected = select_recipes(&res.recipes);
+    let mut selected = select_recipes(&res.recipes, &mut res.item_textures).await;
 
     loop {
         clear_background(BLACK);
         for (i, recipe) in selected.iter().enumerate() {
-            if recipe_button(recipe, i as f32 * screen_width() / 3.0, if let Some(r) = state.recipe_selected { r == i as u8 } else { false }, res.font) {
+            if recipe_button(recipe, i as f32 * screen_width() / 3.0, if let Some(r) = state.recipe_selected { r == i as u8 } else { false }, res.font, &res.item_textures) {
                 state.recipe_selected = Some(i as u8);
             }
         }
@@ -103,14 +126,36 @@ async fn main() {
         let x = screen_width() / 2.0 - w / 2.0;
         let text_color = if state.recipe_selected == None { LIGHT_GRAY } else { WHITE };
         if confirm_button(Rect {x, y: screen_height() - BORDER_SIZE, w, h: 50.0}, "Confirm",  TextParams { font: res.font, font_size: 20, color:text_color, ..Default::default()}) {
-            selected = select_recipes(&res.recipes);
+            selected = select_recipes(&res.recipes, &mut res.item_textures).await;
             state.recipe_selected = None;
         }
         next_frame().await
     }
 }
 
-fn select_recipes(recipes: &Vec<Recipe>) -> Vec<&Recipe> {
+async fn load_image_texture(name: &str, texs: &mut ItemTextureMap) {
+    if let Some(v) = texs.get_mut(name) {
+        if *v == None {
+            let path = format!("res/images/{}", IMAGE_MAP.get(name).unwrap());
+            *v = match load_texture(&path).await {
+                Ok(tex) => Some(tex),
+                Err(e) => {
+                    error!("Unable to load {}: {}", path, e);
+                    None
+                },
+            };
+        }
+    }
+}
+
+async fn recipe_load_textures(r: &Recipe, texs: &mut ItemTextureMap) {
+    load_image_texture(&r.product, texs).await;
+    for ing in &r.input {
+        load_image_texture(&ing.name, texs).await;
+    }
+}
+
+async fn select_recipes<'a>(recipes: &'a Vec<Recipe>, texs: &mut ItemTextureMap) -> Vec<&'a Recipe> {
     let mut ids = Vec::new();
     loop {
         let nb = rand::rand() as usize % recipes.len();
@@ -122,9 +167,10 @@ fn select_recipes(recipes: &Vec<Recipe>) -> Vec<&Recipe> {
             break;
         }
     }
-    println!("{:?}", ids);
     let mut result = Vec::new();
     for i in ids {
+        info!("{:?}", recipes[i]);
+        recipe_load_textures(&recipes[i], texs).await;
         result.push(&recipes[i]);
     }
     result
@@ -135,6 +181,7 @@ fn draw_centered_text(text: &str, x: f32, y: f32, text_params: TextParams) {
     draw_text_ex(text, x - measure.width / 2.0, y + (measure.height / 2.0) - (measure.height - measure.offset_y), text_params);
 }
 
+#[allow(dead_code)]
 enum TextAlignement {
     Left,
     Center,

@@ -1,23 +1,11 @@
-// This is the scraping code I used to gather the data I needed. Need to compile it as main.
-// Deps: reqwest, scraper
-use serde::Serialize;
+
 use reqwest;
 use scraper::{self, Html, Selector, ElementRef};
 
-#[derive(Debug, Serialize)]
-struct Ingredients {
-    name: String,
-    nb: f32,
-}
+use crate::items::*;
 
-#[derive(Debug, Serialize)]
-struct Recipe {
-    name: String,
-    product: String,
-    input: Vec<Ingredients>,
-}
-
-fn main() {
+#[allow(dead_code)]
+pub fn do_the_scrape() {
     let response = reqwest::blocking::get("https://satisfactory.fandom.com/wiki/Hard_Drive").unwrap().text().unwrap();
     let document = Html::parse_document(&response);
     let sel = Selector::parse("#alternateRecipesTable").unwrap();
@@ -38,7 +26,7 @@ fn parse_line(row: ElementRef) -> Option<Recipe> {
 
     let name = cols[0].text().next().unwrap().to_string();
     let product = cols[1].text().next().unwrap().to_string();
-    let input = cols[2]
+    let input: Vec<Ingredients> = cols[2]
         .text()
         .filter(|e| e.len() > 1)
         .collect::<Vec<&str>>()
@@ -50,6 +38,18 @@ fn parse_line(row: ElementRef) -> Option<Recipe> {
             }
             })
         .collect();
+
+    for (i, image) in cols[1].select(&Selector::parse("img[src]").unwrap()).enumerate() {
+        if let Some(link) = image.value().attr("data-src") {
+            let png = link.find(".png").unwrap();
+            let link = &link[0 .. png + 4];
+            let file_name = &link[link.rfind("/").unwrap()+1 ..];
+            println!("(\"{}\", \"{}\"),", product, file_name);
+
+            let response = reqwest::blocking::get(link).unwrap().bytes().unwrap();
+            std::fs::write(format!("res/images/{}", file_name), response).unwrap();
+        }
+    }
 
     Some(Recipe {
         name,
